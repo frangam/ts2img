@@ -6,6 +6,7 @@ import time
 import argparse
 
 
+
 from sklearn.model_selection import StratifiedGroupKFold, GroupKFold
 # from tqdm.notebook import tqdm, trange #progress bars for jupyter notebook
 from tqdm.auto import trange, tqdm #progress bars for pyhton files (not jupyter notebook)
@@ -13,6 +14,8 @@ from tqdm.auto import trange, tqdm #progress bars for pyhton files (not jupyter 
 
 import ts2img.activity_data as act
 import ts2img.lstmimg as l
+
+
 
 def main():
     '''Examples of runs:
@@ -34,10 +37,12 @@ def main():
     p.add_argument('--results-dir', type=str, default="results/plots/", help='directory to save images')
     p.add_argument('--image-tech', type=int, default=0, help='image conversion type to convert time-series to image') #0:Markov; 1:garmian; 2:garmian2; 3:rp
     p.add_argument('--select-axis', type=int, default=0, help='the axis index o -1 if using all available')
+    p.add_argument('--markov-model', type=int, default=0, help='the model to predict the markov iamge')
 
 
 
     args = p.parse_args()
+    
     axis_to_use = args.select_axis
     sampling = args.sampling
     create_numpies = args.create_numpies
@@ -102,24 +107,61 @@ def main():
         # l.process_window(fold, results_folder, validation_data, y_validation_data, sj_validation_data, TIME_STEPS,FOLDS_N, "train", sampling, image_conversion)
 
 
-        if image_conversion == 0: #Markov
-            # Crear dataset para entrenamiento
-            look_back = 1
-            trainX, trainY = l.create_dataset_series_and_markovtransform(training_data, look_back)
-            print("trainX dataset", trainX.shape)
-            # Reshape para LSTM [samples, time steps, features]
-            trainX = np.reshape(trainX, (trainX.shape[0], trainX.shape[1], trainX.shape[2]))
+        if image_conversion == 0:  # Markov
+            # Create dataset for the current fold
+            mtf_model = args.markov_model
+            fold_data_folder = f"{results_folder}{image_conversion}-reconstruction/{mtf_model}/sampling_{sampling}/{FOLDS_N}-fold/fold-{fold}"
+            trainX, trainY = l.load_or_create_dataset(f"{fold_data_folder}/train",fold,mtf_model, training_data, y_training_data, create_numpies, image_conversion)
+            valX, valY = l.load_or_create_dataset(f"{fold_data_folder}/validation",fold,mtf_model, validation_data, y_validation_data, create_numpies, image_conversion)
+            print("After load_or_create_dataset trainX", trainX.shape, " trainY", trainY.shape, ". valX", valX.shape, " valY:", valY.shape)
 
-            # Construir y entrenar el modelo LSTM
-            model = l.build_lstm_model((look_back, trainX.shape[2]))
-            model.fit(trainX, trainY, epochs=50, batch_size=1, verbose=2)
+            input_shape=[]
+            if mtf_model == 0 or mtf_model==1: #LSTM
+                # Reshape for LSTM [samples, time steps, features]
+                trainX = np.reshape(trainX, (trainX.shape[0], trainX.shape[1], trainX.shape[2]))
+                input_shape = (1, trainX.shape[2])
+                valX = np.reshape(valX, (valX.shape[0], valX.shape[1], valX.shape[2]))
+            else:#ConvLSTM
+                # Reshape for ConvLSTM [samples, time steps, rows, cols, channels]
+                # trainX = trainX.reshape((trainX.shape[0], 1, trainX.shape[1], trainX.shape[2], trainX.shape[3]))
+                # valX = valX.reshape((valX.shape[0], 1, valX.shape[1], valX.shape[2], valX.shape[3]))
+                input_shape = (1, trainX.shape[2], trainX.shape[3], trainX.shape[4])
+            # Load or create model for the current fold
+            print("trainX after reshape", trainX.shape, ". valX", valX.shape)
+            
+            trainX, trainY, valX, valY, scaler_X, scaler_Y = l.normalize_data(trainX, trainY, valX, valY)
+            print("trainX after normalizacion", trainX.shape, ". valX", valX.shape)
 
-            # Reconstruir cada serie temporal en el conjunto de datos
-            for idx, series in enumerate(training_data):
-                initial_value = series[0, 0]
+
+            model = l.load_or_create_model(fold_data_folder, f"lstm_model_fold_{fold}.keras", mtf_model, input_shape, trainX, trainY, valX, valY)
+            l.save_val_results(model, valX, valY, f"{fold_data_folder}/results.json")
+
+            # Evaluar el modelo en el conjunto de validación
+
+            # min_val, max_val = training_data.min(), training_data.max()
+            # for idx, series in enumerate(training_data):
+            #     print("idx", idx)
+            #     # initial_value = series[0]
+            #     print("Converting to image")
+            #     mtf_image = l.converttoimage(series.reshape(1, -1))
+            #     l.save_image(mtf_image, f"{fold_data_folder}/train/{y_training_data[idx]}/", f'{sj_training_data[idx]}_{idx}.png')
+                
+            for idx, series in enumerate(validation_data):
+                print("Reconstructing series")
+                print("idx", idx)
+                print("class:", y_validation_data[idx])
+                print("subject:", sj_validation_data[idx])
+                print("val series shape:", series.shape)
                 mtf_image = l.converttoimage(series.reshape(1, -1))
-                reconstructed_series = l.reconstruct_series_with_lstm(model, initial_value, mtf_image, series.shape[0])
-                l.save_comparison_plot(series.reshape(1,-1), reconstructed_series, f"{results_folder}{image_conversion}-reconstruction/sampling_{sampling}/{FOLDS_N}-fold/fold-{fold}/train/{y_training_data[idx]}/", f'{sj_training_data[idx]}_{idx}.png')
+                l.save_image(mtf_image, f"{fold_data_folder}/validation/{y_validation_data[idx]}/", f'{sj_validation_data[idx]}_{idx}.png')
+
+                reconstructed_series = l.reconstruct_series_with_lstm(model, mtf_image, mtf_model)
+                
+                # Desnormalizar la serie reconstruida
+                reconstructed_series = l.denormalize_predictions(reconstructed_series, scaler_Y)
+    
+                
+                l.save_comparison_plot(series.reshape(1, -1), reconstructed_series, f"{fold_data_folder}/comparison-original-reconstructed/{y_validation_data[idx]}/", f'{sj_validation_data[idx]}_{idx}.png')
 
 
 if __name__ == '__main__':
