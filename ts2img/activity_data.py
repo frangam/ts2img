@@ -36,12 +36,8 @@ def create_wisdm_dataset(path):
 
 def preprocess_activity_data_sets(DATASET_NAME="WISDM", dataset_folder="/home/fmgarmor/proyectos/TGEN-timeseries-generation/data/WISDM/", column_names = ['user_id', 'activity', 'timestamp', 'x_axis', 'y_axis', 'z_axis']):
 
-    if DATASET_NAME == "MINDER":
-        df = pd.read_csv(f"{dataset_folder}minder-preprocessed.csv")
-        df = df.rename(columns={"uti_label": "activity", "patient_id": "user_id", #  "freq|Bathroom": "x_axis", "freq|Bed_in": "y_axis", "freq|Bed_out": "z_axis"
-                        })
 
-    elif DATASET_NAME == "WISDM":
+    if DATASET_NAME == "WISDM":
         if os.path.exists(f"{dataset_folder}wisdm-watch-acc-dataset.csv"):
             df = pd.read_csv(f"{dataset_folder}wisdm-watch-acc-dataset.csv")
         else:

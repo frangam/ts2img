@@ -106,7 +106,7 @@ def main():
     print("X_train.shape", X_train.shape, "y_train.shape", y_train.shape, "sj_train.shape", sj_train.shape)
     print("X_val.shape", X_val.shape, "y_val.shape", y_val.shape, "sj_val.shape", sj_val.shape)
 
-    if image_conversion == 0:  # Markov
+    if image_conversion == 0:  # Markov Transition Field
         # Create dataset for training and validation
         mtf_model = args.markov_model
         train_data_folder = f"{results_folder}{image_conversion}-reconstruction/{mtf_model}/sampling_{sampling}/holdout/train"
