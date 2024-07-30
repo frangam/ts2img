@@ -40,8 +40,11 @@ def normalize_data(trainX, trainY, valX, valY):
     
     return trainX, trainY, valX, valY, scaler_X, scaler_Y
 
-def denormalize_predictions(predictions, scaler_Y):
-    return scaler_Y.inverse_transform(predictions)
+def denormalize_predictions(predictions, scaler):
+    # Asegurarse de que las predicciones tengan la forma adecuada (2D)
+    predictions = predictions.reshape(-1, 1)
+    return scaler.inverse_transform(predictions).flatten()
+
 
 # Implementar métrica R² Score
 @tf.keras.utils.register_keras_serializable()
@@ -120,7 +123,7 @@ def create_dataset_from_mtf(series_list):
     return dataX, dataY
 
 def create_dataset_series_and_markovtransform_conv_lstm(series_list):
-    dataX, dataY = []
+    dataX, dataY = [], []
 
     for series in series_list:
         # Generar la imagen MTF para la serie
